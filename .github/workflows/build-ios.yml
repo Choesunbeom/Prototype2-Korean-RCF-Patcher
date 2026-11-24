@@ -1,0 +1,72 @@
+name: Build P2 Korean RCF Patcher IPA
+
+on:
+  push:
+    branches: [feature/ios-rcf-patcher]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, io, lzma, pathlib, tarfile
+          root = pathlib.Path('rcf_patcher_ios')
+          encoded = ''.join((root / ('code_part_%02d.txt' % i)).read_text().strip() for i in range(1,5))
+          archive = lzma.decompress(base64.b64decode(encoded))
+          assert hashlib.sha256(archive).hexdigest() == '4e1c9fd5bd6545dd98ae3df5cd81492c69a95349b2d10cd93ce61f9574363071'
+          with tarfile.open(fileobj=io.BytesIO(archive)) as tf:
+              assert set(tf.getnames()) == {'main.m','rcf_patcher.c'}
+              tf.extractall(root)
+          print('Source integrity verified')
+          PY
+          cc -std=gnu11 -Wall -Wextra -Werror=implicit-function-declaration -I rcf_patcher_ios -fsyntax-only rcf_patcher_ios/rcf_patcher.c
+
+  build-ios:
+    needs: source-check
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and package unsigned iPhone IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          python3 - <<'PY'
+          import base64,hashlib,io,lzma,tarfile,pathlib
+          root=pathlib.Path('rcf_patcher_ios')
+          text=''.join((root/('code_part_%02d.txt'%i)).read_text().strip() for i in range(1,5))
+          data=lzma.decompress(base64.b64decode(text))
+          assert hashlib.sha256(data).hexdigest()=='4e1c9fd5bd6545dd98ae3df5cd81492c69a95349b2d10cd93ce61f9574363071'
+          with tarfile.open(fileobj=io.BytesIO(data)) as t:
+              assert set(t.getnames())=={'main.m','rcf_patcher.c'}
+              t.extractall(root)
+          PY
+          mkdir -p Payload/P2RCFPatcher.app
+          xcrun --sdk iphoneos clang \
+            -arch arm64 -isysroot "$SDK" -miphoneos-version-min=15.0 \
+            -fobjc-arc -O2 -I rcf_patcher_ios \
+            rcf_patcher_ios/main.m rcf_patcher_ios/rcf_patcher.c \
+            -framework UIKit -framework Foundation -framework UniformTypeIdentifiers \
+            -lz -o Payload/P2RCFPatcher.app/P2RCFPatcher
+          cp rcf_patcher_ios/Info.plist Payload/P2RCFPatcher.app/Info.plist
+          codesign --force --sign - --timestamp=none Payload/P2RCFPatcher.app
+          zip -q -r P2-Korean-RCF-Patcher-unsigned.ipa Payload
+          unzip -t P2-Korean-RCF-Patcher-unsigned.ipa | tail -2
+          shasum -a 256 P2-Korean-RCF-Patcher-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: P2-Korean-RCF-Patcher-unsigned-IPA
+          path: P2-Korean-RCF-Patcher-unsigned.ipa
+          retention-days: 14
