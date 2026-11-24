@@ -1,0 +1,94 @@
+name: Build dialogue scanner iPhone IPA v0.2
+on:
+  push:
+    branches: [feature/dialogue-wide-v02]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore sources and verify archive
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,io,tarfile,lzma,base64,hashlib
+          base=pathlib.Path('dialogue_v02')
+          payload=''.join((base/('part_%02d.txt'%i)).read_text().strip() for i in range(1,6))
+          tar=lzma.decompress(base64.b64decode(payload))
+          assert hashlib.sha256(tar).hexdigest()=='03e4f90e70a701d99872a887629dbbffceda81fb7efd994b2bff590ec5dc3be5'
+          with tarfile.open(fileobj=io.BytesIO(tar)) as t:
+            assert set(t.getnames())=={'main.m','dialogue_engine.c','dialogue_engine.h','Info.plist'}
+            t.extractall(base)
+          PY
+      - name: Linux C syntax check (libarchive)
+        run: |
+          set -euo pipefail
+          if test -f /usr/include/archive.h; then
+            cc -std=gnu11 -Wall -Wextra -Werror=implicit-function-declaration -I dialogue_v02 -fsyntax-only dialogue_v02/dialogue_engine.c
+          else
+            echo "libarchive headers unavailable on Linux runner; macOS build will compile using vendored libarchive"
+          fi
+  build-ios:
+    needs: source-check
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore verified sources
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,io,tarfile,lzma,base64,hashlib
+          base=pathlib.Path('dialogue_v02')
+          payload=''.join((base/('part_%02d.txt'%i)).read_text().strip() for i in range(1,6))
+          tar=lzma.decompress(base64.b64decode(payload))
+          assert hashlib.sha256(tar).hexdigest()=='03e4f90e70a701d99872a887629dbbffceda81fb7efd994b2bff590ec5dc3be5'
+          with tarfile.open(fileobj=io.BytesIO(tar)) as t:
+            assert set(t.getnames())=={'main.m','dialogue_engine.c','dialogue_engine.h','Info.plist'}
+            t.extractall(base)
+          PY
+      - name: Build libarchive for iPhone (ZIP, RAR, RAR5)
+        run: |
+          set -euo pipefail
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/libarchive/libarchive/archive/refs/tags/v3.7.4.tar.gz \
+            -o /tmp/p2-libarchive-src.tar.gz
+          tar xzf /tmp/p2-libarchive-src.tar.gz
+          cmake -S libarchive-3.7.4 -B libarchive-build -G Ninja \
+            -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT="$SDK" \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DENABLE_TEST=OFF -DENABLE_TAR=OFF -DENABLE_CPIO=OFF -DENABLE_CAT=OFF -DENABLE_UNZIP=OFF \
+            -DENABLE_OPENSSL=OFF -DENABLE_LZMA=OFF -DENABLE_BZip2=OFF \
+            -DENABLE_LIBB2=OFF -DENABLE_LZ4=OFF -DENABLE_ZSTD=OFF \
+            -DENABLE_EXPAT=OFF -DENABLE_ICONV=OFF -DENABLE_ACL=OFF \
+            -DZLIB_LIBRARY="$SDK/usr/lib/libz.tbd" -DZLIB_INCLUDE_DIR="$SDK/usr/include"
+          cmake --build libarchive-build --target archive_static -j 4
+          test -s libarchive-build/libarchive/libarchive.a
+      - name: Compile iOS ARM64 app and create unsigned IPA
+        run: |
+          set -euo pipefail
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          mkdir -p Payload/P2DialogueScanner.app
+          xcrun --sdk iphoneos clang -arch arm64 -isysroot "$SDK" \
+            -miphoneos-version-min=15.0 -fobjc-arc -O2 \
+            -I dialogue_v02 -I libarchive-3.7.4/libarchive \
+            dialogue_v02/main.m dialogue_v02/dialogue_engine.c \
+            libarchive-build/libarchive/libarchive.a \
+            -framework UIKit -framework Foundation -framework UniformTypeIdentifiers \
+            -lz -o Payload/P2DialogueScanner.app/P2DialogueScanner
+          cp dialogue_v02/Info.plist Payload/P2DialogueScanner.app/Info.plist
+          codesign --force --sign - --timestamp=none Payload/P2DialogueScanner.app
+          zip -q -r P2-Dialogue-Scanner-v0.2-unsigned.ipa Payload
+          unzip -t P2-Dialogue-Scanner-v0.2-unsigned.ipa | tail -3
+          shasum -a 256 P2-Dialogue-Scanner-v0.2-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: P2-Dialogue-Scanner-v0.2-unsigned-IPA
+          path: P2-Dialogue-Scanner-v0.2-unsigned.ipa
+          retention-days: 14
