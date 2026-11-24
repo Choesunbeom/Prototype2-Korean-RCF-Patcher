@@ -68,7 +68,7 @@ jobs:
             -DENABLE_LIBB2=OFF -DENABLE_LZ4=OFF -DENABLE_ZSTD=OFF \
             -DENABLE_EXPAT=OFF -DENABLE_ICONV=OFF -DENABLE_ACL=OFF \
             -DZLIB_LIBRARY="$SDK/usr/lib/libz.tbd" -DZLIB_INCLUDE_DIR="$SDK/usr/include"
-          cmake --build libarchive-build --target archive -j 4
+          cmake --build libarchive-build --target archive_static -j 4
           test -s libarchive-build/libarchive/libarchive.a
       - name: Compile iOS ARM64 app and create unsigned IPA
         run: |
