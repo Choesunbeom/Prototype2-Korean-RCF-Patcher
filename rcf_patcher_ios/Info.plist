@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+<key>CFBundleIdentifier</key><string>com.choesunbeom.prototype2.rcfpatcher</string>
+<key>CFBundleExecutable</key><string>P2RCFPatcher</string>
+<key>CFBundleName</key><string>P2 RCF Patcher</string>
+<key>CFBundleDisplayName</key><string>P2 한글 대사패처</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>0.1</string>
+<key>CFBundleVersion</key><string>1</string>
+<key>LSRequiresIPhoneOS</key><true/>
+<key>MinimumOSVersion</key><string>15.0</string>
+<key>UIFileSharingEnabled</key><true/>
+<key>LSSupportsOpeningDocumentsInPlace</key><true/>
+<key>UIRequiresFullScreen</key><false/>
+<key>UISupportedInterfaceOrientations</key>
+<array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
+<key>UIApplicationSceneManifest</key>
+<dict>
+<key>UIApplicationSupportsMultipleScenes</key><false/>
+<key>UISceneConfigurations</key>
+<dict><key>UIWindowSceneSessionRoleApplication</key><array>
+<dict>
+<key>UISceneConfigurationName</key><string>Default Configuration</string>
+<key>UISceneDelegateClassName</key><string>P2SceneDelegate</string>
+</dict></array></dict>
+</dict>
+</dict>
+</plist>
